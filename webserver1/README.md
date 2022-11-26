@@ -1,5 +1,5 @@
-# Webserver - Learning from Scratch 2
+# Webserver - Learning from Scratch 1
 
-- Client connected threads on thread pool 
-- Each thread sends data to a database connected thread through mpsc.
-- The database connected thread send result to the client connected threads through a customized reverse mpsc.
+- Primitively structured webserver (Database - Server - Client) 
+- Each client connected server thread directly communicated with the database server.
+- Able to check the number of clients to connected server. 
