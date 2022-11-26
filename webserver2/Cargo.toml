@@ -1,0 +1,22 @@
+[package]
+name = "webserver2"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "database"
+path = "src/bin/database.rs"
+
+
+[dependencies]
+rand = "0.8.5"

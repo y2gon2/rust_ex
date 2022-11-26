@@ -1,0 +1,8 @@
+
+[workspace]
+
+
+members = [
+    "webserver1",
+    "webserver2",
+]
