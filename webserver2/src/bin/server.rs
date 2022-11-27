@@ -32,9 +32,10 @@ fn service(counter: Arc<Mutex<u8>>) {
     let user_listener = TcpListener::bind("127.0.0.1:5001").unwrap();
 
     loop {
+        #[allow(unused_assignments)]
         let mut temp: u8 = 0;
         {
-            let mut counter_guard = counter.lock().unwrap();
+            let counter_guard = counter.lock().unwrap();
             temp = *counter_guard;
         }
         match temp < 2 {
@@ -56,7 +57,7 @@ fn service(counter: Arc<Mutex<u8>>) {
                                 let mut result_buffer: [u8; 64] = [0; 64];
                                 let _ = db_socket.read(&mut result_buffer).unwrap();
                                 
-                                user_socket.write(&result_buffer);
+                                user_socket.write(&result_buffer).unwrap();
                             }, 
                             Err(_) => {
                                 // println!("Disconnected");

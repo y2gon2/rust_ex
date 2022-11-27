@@ -19,6 +19,7 @@ fn main() -> std::io::Result<()> {
                     let mut buffer: [u8; 64] = [0; 64];
                     let _ = socket.read(&mut buffer).unwrap();
                     let buf_str = from_utf8(&buffer).unwrap().to_owned();
+                    #[allow(unused_assignments)]
                     let mut result = true;
 
                     {
