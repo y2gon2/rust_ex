@@ -9,10 +9,11 @@ use std::{
 fn main() {
     let mut rng_num = rand::thread_rng();
     let address = "127.0.0.1:5001".to_owned();
-    let mut stream = TcpStream::connect(&address).unwrap();
-    let one_sec = time::Duration::from_secs(1);
 
     for _ in 0..10 {
+        let mut stream = TcpStream::connect(&address).unwrap();
+        let one_sec = time::Duration::from_secs(1);
+    
         thread::sleep(one_sec);
         let num = rng_num.gen_range(1..11).to_string();
 

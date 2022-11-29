@@ -1,84 +1,186 @@
 use std::{
-    io::{prelude::Write, Read, stdin},
-    net::{Shutdown, TcpListener, TcpStream},
+    fmt::{Debug, Display},
+    io::{Write, Read},
+    net::{TcpListener, TcpStream},
     thread,
-    sync::{Arc, Mutex},
+    sync::{Arc, mpsc, Mutex},
 };
 
-fn main() -> std::io::Result<()> {
-    let counter = Arc::new(Mutex::<u8>::new(0));
 
-    monitor(counter.clone());
-    service(counter.clone());
-    
+fn main() -> std::io::Result<()> {
+    let pool = ThreadPool::new(8).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:5001").unwrap();
+
+    loop {
+        let (tx, rx) = mpsc::channel();
+        let (stream, _addr) = listener.accept().unwrap();
+        let stream_clone = stream.try_clone().unwrap();
+
+        pool.execute(move || {
+            db_handle(stream_clone, tx);
+        });
+
+        pool.execute(move || {
+            client_handle(stream, rx);
+        });
+    }
+
+    #[allow(unreachable_code)]
     Ok(())
 }
 
-fn monitor(counter: Arc<Mutex<u8>>) {
-    thread::spawn(move || {
-        loop {
-            println!("Please press the number to check");
-            println!("1. current connected client number");
-            let mut buffer = String::new();
-            let _ = stdin().read_line(&mut buffer).unwrap();
-            if buffer.trim() == "1".to_owned() {
-                println!("current connected client number : {}", *counter.lock().unwrap());
-            }
-        }
-    });
+
+fn client_handle(mut stream: TcpStream, rx: mpsc::Receiver<[u8; 64]>) {
+    let buffer = rx.recv().unwrap();
+    stream.write(&buffer).unwrap();
 }
 
-fn service(counter: Arc<Mutex<u8>>) {
-    let user_listener = TcpListener::bind("127.0.0.1:5001").unwrap();
+fn db_handle(mut stream: TcpStream, tx: mpsc::Sender<[u8; 64]>) {
+    let mut buffer: [u8; 64] = [0; 64];
+    stream.read(&mut buffer).unwrap();
 
-    loop {
-        #[allow(unused_assignments)]
-        let mut temp: u8 = 0;
-        {
-            let counter_guard = counter.lock().unwrap();
-            temp = *counter_guard;
+    let mut db_stream = TcpStream::connect("127.0.0.1:5000").unwrap();
+    db_stream.write(&buffer).unwrap();
+
+    buffer = [0; 64];
+    db_stream.read(&mut buffer).unwrap();
+
+    tx.send(buffer).unwrap();
+}
+
+// fn operator(counter: Arc<RwLock<u8>>) {
+//     thread::spawn(move || {
+//         loop {
+//             println!("Please press the number to check");
+//             println!("1. current connected client number");
+//             let mut buffer = String::new();
+//             let _ = stdin().read_line(&mut buffer).unwrap();
+//             if buffer.trim() == "1".to_owned() {
+//                 println!("current connected client number : {}", *counter.read().unwrap());
+//             }
+//         }
+//     });
+// }
+
+pub struct ThreadPool {
+    sender: mpsc::Sender<Message>,
+    workers: Vec<Worker>,
+}
+
+impl ThreadPool {
+    pub fn new(size: usize) -> Result<Self, ZeroWorkerError> {
+        if size == 0 {
+            return Err(ZeroWorkerError);
         }
-        match temp < 2 {
-            true => {
-                let counter_clone = counter.clone();
-                let (mut user_socket, _addr) = user_listener.accept().unwrap();
-                {
-                    let mut counter_guard = counter.lock().unwrap();
-                    *counter_guard += 1;
-                }
-                thread::spawn(move || {
-                    loop {
-                        let mut buffer: [u8; 64] = [0; 64];
-                        match user_socket.read(&mut buffer) {
-                            Ok(_a) => {
-                                let mut db_socket = TcpStream::connect("127.0.0.1:5000").unwrap();
-                                db_socket.write(&buffer).unwrap();
-        
-                                let mut result_buffer: [u8; 64] = [0; 64];
-                                let _ = db_socket.read(&mut result_buffer).unwrap();
-                                
-                                user_socket.write(&result_buffer).unwrap();
-                            }, 
-                            Err(_) => {
-                                // println!("Disconnected");
-                                {
-                                    let mut counter_clone_guard = counter_clone.lock().unwrap();
-                                    *counter_clone_guard -= 1; 
-                                    // println!("{}", *counter_clone_guard);
-                                }
-                                break;
-                            }
-                        }
-                    }
-                });
-    
+
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+
+        let mut workers = Vec::new();
+
+        for id in 0..size {
+            workers.push(Worker::new(id, Arc::clone(&receiver)));
+        }
+
+        Ok(
+            Self {
+                sender,
+                workers,
             }
-            false => {
-                let (user_socket, _addr) = user_listener.accept().unwrap();
-                user_socket
-                    .shutdown(Shutdown::Both)
-                    .expect("shutdown call failed");
+        )
+    }
+
+    pub fn execute<F>(&self, func: F) 
+        where   
+            F: FnOnce() + Send + 'static
+    {
+        let job = Box::new(func);
+        self.sender.send(Message::NewJob(job)).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        println!("Sending terminate message to all workers");
+
+        for _ in &mut self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+
+        for worker in &mut self.workers {
+            println!("[{} worker] : Shutting down", worker.id);
+
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
             }
         }
     }
 }
+
+struct Worker {
+    id: usize,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl Worker {
+    pub fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Self {
+        let thread = thread::spawn(move || {
+            loop {
+                let message = receiver
+                .lock()
+                .unwrap()
+                .recv()
+                .unwrap();
+
+                match message {
+                    Message::NewJob(job) => {
+                        println!("[{} worker] : Executing", id);
+                        job.call_box();
+                    },
+                    Message::Terminate => {
+                        println!("[{} worker] : To be terminated", id);
+                        break;
+                    },
+                }
+            }       
+        });
+
+        Self {
+            id,
+            thread: Some(thread),
+        }
+    }
+}
+
+enum Message {
+    NewJob(Job),
+    Terminate,
+}
+
+type Job = Box<dyn FnBox + Send + 'static>;
+
+trait FnBox {
+    fn call_box(self: Box<Self>);
+}
+
+impl<F: FnOnce()> FnBox for F {
+    fn call_box(self: Box<F>) {
+        (*self)()
+    }
+}
+
+pub struct ZeroWorkerError;
+
+impl Display for ZeroWorkerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl Debug for ZeroWorkerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The number of worker should not be zero")
+    }
+}
+
+impl std::error::Error for ZeroWorkerError {}

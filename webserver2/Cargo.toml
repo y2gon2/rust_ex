@@ -17,6 +17,9 @@ path = "src/bin/server.rs"
 name = "database"
 path = "src/bin/database.rs"
 
+[[bin]]
+name = "threadpool"
+path = "src/bin/threadpool.rs"
 
 [dependencies]
 rand = "0.8.5"
