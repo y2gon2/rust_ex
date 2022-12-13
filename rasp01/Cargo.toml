@@ -10,7 +10,8 @@ name = "hello"
 path = "src/bin/hello.rs"
 
 [[bin]]
-name = "actix1"
-path = "src/bin/actix1.rs"
+name = "actix_server"
+path = "src/bin/actix_server.rs"
 
 [dependencies]
+actix-web = "4"
