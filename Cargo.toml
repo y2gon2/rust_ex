@@ -6,4 +6,5 @@ members = [
     "webserver1",
     "webserver2",
     "webserver3",
+    "rasp01",
 ]
