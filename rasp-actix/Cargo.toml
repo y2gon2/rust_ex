@@ -9,6 +9,8 @@ edition = "2021"
 name = "server0"
 path = "src/bin/server0.rs"
 
+[target.armv7-unknown-linux-musleabihf]
+linker = "arm-linux-gnueabihf-ld"
 
 [dependencies]
 actix-web = "4"
