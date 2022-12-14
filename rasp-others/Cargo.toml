@@ -1,5 +1,5 @@
 [package]
-name = "rasp01"
+name = "rasp-others"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,9 +9,4 @@ edition = "2021"
 name = "hello"
 path = "src/bin/hello.rs"
 
-[[bin]]
-name = "actix_server"
-path = "src/bin/actix_server.rs"
-
 [dependencies]
-actix-web = "4"
